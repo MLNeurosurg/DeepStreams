@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 """
-Main script to train and analyze semantic segmentation of oncostreams in H&E images
+Main script to train and analyze semantic segmentation of oncostreams in H&E images.
 """
 
 from models.unet_architectures import unet, att_unet, r2_unet, att_r2_unet
@@ -20,6 +20,7 @@ from pandas import DataFrame
 
 # import keras and tf
 from keras.models import load_model
+from keras.optimizers import Adam
 from keras.callbacks import LearningRateScheduler
 import tensorflow as tf
 from keras import backend as K
@@ -121,7 +122,7 @@ if __name__ == "__main__":
     # import  
     IMAGE_SIZE = (256, 256, 3)
     # specify the root directory with "images" and "masks" subdirectories
-    training_image_dir = ""
+    training_image_dir = "/media/4tbhd/home/todd/Desktop/oncostreams/patches/training_patches"
     validation_image_dir = ""
 
     # instantiate the data generator augmentation methods
@@ -142,19 +143,20 @@ if __name__ == "__main__":
                             aug_dict= data_gen_args,
                             save_to_dir = None)
 
-    val_gen = trainGenerator(batch_size=5,
-                            train_path= validation_image_dir,
-                            image_folder= 'images',
-                            mask_folder= 'masks',
-                            aug_dict= data_gen_args,
-                            save_to_dir = None)
+#    val_gen = trainGenerator(batch_size=5,
+#                            train_path= validation_image_dir,
+#                            image_folder= 'images',
+#                            mask_folder= 'masks',
+#                            aug_dict= data_gen_args,
+#                            save_to_dir = None)
 
-    # model = load_model('/media/labcomputer/e33f6fe0-5ede-4be4-b1f2-5168b7903c7a/home/todd/Desktop/oncostreams/python_scripts/oncostreams_cells_98trainacc.hdf5')
+    model = load_model('/media/4tbhd/home/todd/Desktop/oncostreams/models/oncostreams_cells_98trainacc.hdf5')
     # model = att_r2_unet()
-    model = unet(input_size=IMAGE_SIZE)
+    # model = unet(input_size=IMAGE_SIZE)
+
 
     # compile the model
-    adam = Adam(lr = 0.0005)
+    adam = Adam(lr = 0.00005)
     model.compile(optimizer = adam, loss = 'binary_crossentropy', metrics = ['accuracy'])
 
     # fit the model
