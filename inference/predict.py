@@ -1,12 +1,13 @@
 
 import numpy as np
-import pandas as pd
+from pandas import DataFrame
 import os
 from skimage.io import imread
 import skimage.transform as trans
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
+from tensorflow.keras import backend as K
 
 def random_crop(image, mask = None, min_percent = 60): # add mask to argument
 	"""Input image as a numpy array. Output a random crop from that image. If mask is None, will just return crop image."""
@@ -34,196 +35,198 @@ def random_crop(image, mask = None, min_percent = 60): # add mask to argument
 		return crop_image
 
 def preprocessing_rescale(img):
-    '''
-    Simple rescaling function to make pixel values between 0-1
-    '''
-    if (np.max(img) > 1):
-        return img / 255
-    else:
-        return img
-    return img
+	"""Simple rescaling function to make pixel values between 0-1"""
+	if (np.max(img) > 1):
+		return img / 255
+	else:
+		return img
+	return img
 
+def feedfoward(model, raw_image):
+	"""Function that will perform forward pass on raw unprocessed image"""
+	img_resize = trans.resize(raw_image, (256, 256))
+	img_for_net = preprocessing_rescale(img_resize)
+	pred = model.predict(img_for_net[None,:,:,:])[0,:,:,0]
+	return pred
+	
 def contour_plot(image_path, model):
-    img = imread(image_path)
-    img_resize = trans.resize(img, (256, 256))
-    img_for_net = preprocessing_rescale(img_resize)
-    pred = model.predict(img_for_net[None,:,:,:])[0,:,:,0] ##### MAKE SURE CORRECT!!
+	img = imread(image_path)
+	pred = feedfoward(img)
 
-    percentiles = [0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
+	percentiles = [0.5, 0.75, 0.8, 0.85, 0.9, 0.95, 0.99]
 
-    pred = np.flipud(pred) # realign the y axis
+	pred = np.flipud(pred) # realign the y axis
 
-    fig, ax = plt.subplots()
-    CS = ax.contour(pred, levels = percentiles)
-    ax.clabel(CS, inline = 1)
-    plt.show()
+	fig, ax = plt.subplots()
+	CS = ax.contour(pred, levels = percentiles)
+	ax.clabel(CS, inline = 1)
+	plt.show()
 
 def iou(y_true, y_pred):
 
-    # calculates a boolean array, then converts to float
-    y_true = K.cast(K.greater_equal(y_true, 0.5), K.floatx())
-    y_pred = K.cast(K.greater_equal(y_pred, 0.5), K.floatx())
+	# calculates a boolean array, then converts to float
+	y_true = K.cast(K.greater_equal(y_true, 0.5), K.floatx())
+	y_pred = K.cast(K.greater_equal(y_pred, 0.5), K.floatx())
 
-    # computes intersection and union
-    intersection = K.sum(y_true * y_pred)
-    union = K.sum(y_true) + K.sum(y_pred) - intersection
-    # error handling if union is equal to 0, avoid zerodivision error
-    return K.switch(K.equal(union, 0), 1.0, intersection/union)
+	# computes intersection and union
+	intersection = K.sum(y_true * y_pred)
+	union = K.sum(y_true) + K.sum(y_pred) - intersection
+	# error handling if union is equal to 0, avoid zerodivision error
+	return K.switch(K.equal(union, 0), 1.0, intersection/union)
 
 def batch_iou(preds, y_test):
-    iou_val = [] 
-    for i in range(len(preds)):
-        def indexer(array):
-            indices = []
-            for index, val in enumerate(array):
-                if val:
-                    indices.append(index)
-            return set(indices)
+	iou_val = [] 
+	for i in range(len(preds)):
+		def indexer(array):
+			indices = []
+			for index, val in enumerate(array):
+				if val:
+					indices.append(index)
+			return set(indices)
 
-        pred_flat = indexer(preds[i,:,:,:].flatten())
-        ground_flat = indexer(y_test[i,:,:,:].flatten())
-        iou = len(pred_flat & ground_flat)/len(pred_flat | ground_flat)
-        iou_val.append(iou)
-    return iou_val
+		pred_flat = indexer(preds[i,:,:,:].flatten())
+		ground_flat = indexer(y_test[i,:,:,:].flatten())
+		iou = len(pred_flat & ground_flat)/len(pred_flat | ground_flat)
+		iou_val.append(iou)
+	return iou_val
 
-def save_predictions(model, image_path, save_file):
-    "Function call to save predictions from a model"
-    img = imread(image_path)
-    img = random_crop(img, min_percent = 90)
-    height, width = img.shape[0], img.shape[1]
+def calculate_area_oncostream(pred, prop_threshold = 0.9):
+	"""Will calculate the area of oncostream in prediction"""
+	pred[pred > prop_threshold] = 1
+	pred[pred <= prop_threshold] = 0
+	onco_area = pred.sum()
+	return onco_area/(256*256)
 
-    # error handling where some of the images where more than 3 channels (?)
-    if img.shape[2] != 3:
-        img = img[:,:,0:3]
+def save_predictions(model, src_dir, img_filename, root_save, calculate_area = True):
+	"""Function call to save predictions from a model. root_save must contain preds and crops subdirectories."""
+	img = imread(os.path.join(src_dir, img_filename))
+	img = random_crop(img, min_percent = 90)
+	height, width = img.shape[0], img.shape[1]
 
-    # image preprocess and predicti
-    img_resize = trans.resize(img, (256, 256))
-    img_for_net = preprocessing_rescale(img_resize)
-    pred = model.predict(img_for_net[None,:,:,:])[0,:,:,0]
+	# error handling where some of the images where more than 3 channels (?)
+	if img.shape[2] != 3:
+		img = img[:,:,0:3]
 
-    # save both the prediction and the random crop
-    pred *= 255
-    pred = trans.resize(pred, output_shape=(height, width), order = 3)
-    plt.imsave(image_path[0:-4] + "_pred.png", pred, cmap = "viridis", vmin = 0, vmax = 255)
-    plt.imsave(image_path[0:-4] + "_crop.png", img, vmin = 0, vmax = 255)
+	# perform feedforward pass on image
+	pred = feedfoward(model, img)
 
-def calculate_area_oncostream(image_path, model):
+	if calculate_area:
+		area = calculate_area_oncostream(pred)
+	
+	# save both the prediction and the random crop
+	pred *= 255 # rescale prediction
+	pred = trans.resize(pred, output_shape=(height, width), order = 3) # resize prediction
+	plt.imsave(os.path.join(root_save, "preds", img_filename[0:-4] + "_pred.png"), pred, cmap = "viridis", vmin = 0, vmax = 255)
+	plt.imsave(os.path.join(root_save, "crops", img_filename[0:-4] + "_crop.png"), img, vmin = 0, vmax = 255)
 
-    img = imread(image_path)
-    if img.shape[2] != 3:
-        img = img[:,:,0:3]
-    img_resize = trans.resize(img, (256, 256))
-    img_for_net = preprocessing_rescale(img_resize)
-    pred = model.predict(img_for_net[None,:,:,:])[0,:,:,0] ##### MAKE SURE CORRECT!!
-
-    pred[pred > 0.90] = 1
-    pred[pred <= 0.90] = 0
-    onco_area = pred.sum()
-    return onco_area/(256*256)
-
+	return area
+	
 def plotting_function(image_path, model):
 
-    img = imread(image_path)
-    img_resize = trans.resize(img,(256, 256))
-    img_for_net = np.expand_dims(img_resize, axis = 0)
-    pred = model.predict(preprocessing(img_for_net))[0,:,:,0]
+	img = imread(image_path)
+	img = random_crop(img)
+	pred = feedfoward(model, img)
 
-    fig = plt.figure(figsize=(20, 6), dpi=100)
-    ax1 = fig.add_subplot(1,4,1)
-    diff = 1 - img_resize.max()
-    ax1.imshow(img_resize + diff)
-    ax1.set_title("Oncostream image")
+	fig = plt.figure(figsize=(20, 6), dpi=100)
+	ax1 = fig.add_subplot(1,4,1)
+	diff = 1 - img.max()
+	ax1.imshow(img + diff)
+	ax1.set_title("Oncostream image")
 
-    ax2 = fig.add_subplot(1,4,2)
-    ax2.imshow(pred, cmap='Spectral_r')
-    ax2.set_title("Prediction heatmap")
+	ax2 = fig.add_subplot(1,4,2)
+	ax2.imshow(pred, cmap='Spectral_r')
+	ax2.set_title("Prediction heatmap")
 
-    ax3 = fig.add_subplot(1,4,3)
-    pred[pred > 0.5] = 1
-    pred[pred <= 0.5] = 0
-    ax3.imshow(pred, cmap="Greys_r")
-    ax3.set_title("Binarized prediction")
+	ax3 = fig.add_subplot(1,4,3)
+	pred[pred > 0.5] = 1
+	pred[pred <= 0.5] = 0
+	ax3.imshow(pred, cmap="Greys_r")
+	ax3.set_title("Binarized prediction")
 
-    mask = imread(image_path.replace("images", "masks"))
-    mask = trans.resize(mask,(256, 256))
-    ax4 = fig.add_subplot(1,4,4)
-    ax4.imshow(mask)
-    ax4.set_title("Ground truth")
+	mask = imread(image_path.replace("images", "masks"))
+	mask = trans.resize(mask,(256, 256))
+	ax4 = fig.add_subplot(1,4,4)
+	ax4.imshow(mask)
+	ax4.set_title("Ground truth")
 
-    def indexer(array):
-        indices = []
-        for index, val in enumerate(array):
-            if val:
-                indices.append(index)
-        return set(indices)
+	def indexer(array):
+		indices = []
+		for index, val in enumerate(array):
+			if val:
+				indices.append(index)
+		return set(indices)
 
-    pred_flat = indexer(pred.flatten())
+	pred_flat = indexer(pred.flatten())
 
-    ground_flat = indexer(mask[:,:,0].flatten())
-    iou = len(pred_flat & ground_flat)/len(pred_flat | ground_flat)
-    plt.suptitle("Intersection over union: " + str(np.round(iou, 3)))
+	ground_flat = indexer(mask[:,:,0].flatten())
+	iou = len(pred_flat & ground_flat)/len(pred_flat | ground_flat)
+	plt.suptitle("Intersection over union: " + str(np.round(iou, 3)))
 
 def plotting_function_inference(model, image_path = None, generator = None):
 
-    if generator:
-        # index into the input image and the first channel 
-        img, mask = generator.__next__()
-        img, mask = img[0], mask[0]
-    if image_path:
-        img = imread(image_path)
-        img = trans.resize(img,(256, 256))
-        img = preprocessing(img)
-    
-    # forward pass through network and index into the prediction
-    img = np.expand_dims(img, axis = 0)
-    pred = model.predict(img)[0,:,:,0]
+	if generator:
+		# index into the input image and the first channel 
+		img, mask = generator.__next__()
+		img, mask = img[0], mask[0]
+	if image_path:
+		img = random_crop(imread(image_path))
+	
+	# forward pass through network and index into the prediction
+	pred = feedfoward(model, img)	
 
-    img = img[0] # most reduce dims 
-    fig = plt.figure()
-    ax1 = fig.add_subplot(1,3,1)
-    diff = 1 - img.max()
-    ax1.imshow(img + diff)
-    ax1.set_title("Oncostream image")
+	img = img[0] # most reduce dims 
+	fig = plt.figure()
+	ax1 = fig.add_subplot(1,3,1)
+	diff = 1 - img.max()
+	ax1.imshow(img + diff)
+	ax1.set_title("Oncostream image")
 
-    ax2 = fig.add_subplot(1,3,2)
-    ax2.imshow(pred, cmap='viridis')
-    ax2.set_title("Prediction heatmap")
+	ax2 = fig.add_subplot(1,3,2)
+	ax2.imshow(pred, cmap='viridis')
+	ax2.set_title("Prediction heatmap")
 
-    ax3 = fig.add_subplot(1,3,3)
-    pred[pred > 0.5] = 1
-    pred[pred <= 0.5] = 0
-    ax3.imshow(pred, cmap="Greys_r")
-    ax3.set_title("Binarized prediction")
+	ax3 = fig.add_subplot(1,3,3)
+	pred[pred > 0.5] = 1
+	pred[pred <= 0.5] = 0
+	ax3.imshow(pred, cmap="Greys_r")
+	ax3.set_title("Binarized prediction")
 
-    plt.suptitle(image_path.split("/")[-1])
-#    plt.show()
-    plt.savefig("oncoprediction.png", dpi = 500)
+	plt.suptitle(image_path.split("/")[-1])
+	plt.savefig("oncoprediction.png", dpi = 500)
 
+def export_oncostream_area(model, image_dir):
+	filelist = sorted(os.listdir(image_dir))
+	arealist = []
+	for file in filelist:
+		print(file)
+		arealist.append(calculate_area_oncostream(os.path.join(image_dir, file), model))
+	return DataFrame({"files":filelist, "areas":arealist})
 
-def export_oncostream_area(image_dir, model):
-    filelist = sorted(os.listdir(image_dir))
-    arealist = []
-    for file in filelist:
-        print(file)
-        arealist.append(calculate_area_oncostream(os.path.join(image_dir, file), model))
-    return DataFrame({"files":filelist, "areas":arealist})
+def export_file_area_list(tuple_list):
+	files = [x[0] for x in tuple_list]
+	areas = [x[1] for x in tuple_list]
+	return DataFrame({"files":files, "areas":areas})
 
 if __name__ == "__main__":
 
-    # import model, must include custom_object if used intersection over union as data metric
-    model = load_model("/Users/toddhollon/Desktop/oncostreams_mac/oncostreams_fcnn_97trainaccTODDBESTMODEL.hdf5", custom_objects = {'iou':iou})
+	# import model, must include custom_object if used intersection over union as data metric
+	model = load_model("/Users/toddhollon/Desktop/oncostreams_FINAL/models/human_oncostreams_94trainacc.hdf5")
+	#  custom_objects = {'iou':iou})
+	# plotting_function_inference(model, image_path = "/media/4tbhd/home/todd/Desktop/oncostreams/ImagesforDeeplearningAnalysisofGBMandLGG/GBM_IV/Page1_10_DX1.JPG")    
 
-    # call plotting functions above
-    plotting_function_inference(model, image_path = "/media/4tbhd/home/todd/Desktop/oncostreams/ImagesforDeeplearningAnalysisofGBMandLGG/GBM_IV/Page1_10_DX1.JPG")    
+	# can calculate the area of calculated oncostreams for specific image directory
+	# df = export_oncostream_area(model, "/Users/toddhollon/Desktop/HEimages_for_deeplearning_anlaysis/stream_images")
+	# df.to_excel("andrea_data.xlsx")
 
-    # can calculate the area of calculated oncostreams for specific image directory
-    df = export_oncostream_area("/Users/toddhollon/Desktop/HEimages_for_deeplearning_anlaysis/stream_images", model)
-    df.to_excel("andrea_data.xlsx")
-
-    # loop to run through and save predictions on images in single directory
-    for root, dirs, files in os.walk("/Users/toddhollon/Desktop/Images_for_Deep_Learning_TCGA/crops"):
-        for file in files:
-            if "tif" in file or "JPG" in file or "png" in file:
-                print(os.path.join(root, file))
-                save_predictions(os.path.join(root, file), file, model=model)
-/media/4tbhd/home/todd/Desktop/oncostreams/ImagesforDeeplearningAnalysisofGBMandLGG/GBM_IV
+	img_dir = "GBM_IV"
+	save_pred_root = os.path.join("/Users/toddhollon/Desktop/oncostreams_FINAL/Preds", img_dir)
+	file_area = []
+	# loop to run through and save predictions on images in single directory
+	for root, dirs, files in os.walk(os.path.join('/Users/toddhollon/Desktop/oncostreams_FINAL/ImagesforDeeplearningAnalysisofGBMandLGG', img_dir)):
+		for file in files:
+			if "tif" in file or "JPG" in file or "png" in file:
+				print(os.path.join(root, file))
+				area = save_predictions(model, src_dir = root, img_filename = file, root_save=save_pred_root, calculate_area=True)
+				file_area.append((file, area))
+	df = export_file_area_list(file_area)
+	df.to_excel(os.path.join(save_pred_root, img_dir + ".xlsx"))
