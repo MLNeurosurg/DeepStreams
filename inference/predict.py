@@ -2,20 +2,20 @@
 import numpy as np
 from pandas import DataFrame
 import os
+import sys
 from skimage.io import imread
 import skimage.transform as trans
 from tensorflow.keras.models import load_model
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score
 from tensorflow.keras import backend as K
+from pathlib import Path
 
-def random_crop(image, mask = None, min_percent = 60): # add mask to argument
+def random_crop(image, mask = None, min_percent = 60, max_percent = 100): # add mask to argument
 	"""Input image as a numpy array. Output a random crop from that image. If mask is None, will just return crop image."""
 	height = image.shape[0]
 	width = image.shape[1]
 
-	# while True:
-	# select a random x and y pixel as starting point
 	rand_factor = np.random.randint(low = min_percent, high = 100) / 100 # float between 0.4 and 1, want images no less than 40% of original
 	rand_size = int(height * rand_factor) # nearly all images the smallest dimension is height
 	print(rand_size)
@@ -43,7 +43,7 @@ def preprocessing_rescale(img):
 	return img
 
 def feedfoward(model, raw_image):
-	"""Function that will perform forward pass on raw unprocessed image"""
+	"""Function that will perform forward pass on raw unprocessed image. Well then return the probability heatmap from network."""
 	img_resize = trans.resize(raw_image, (256, 256))
 	img_for_net = preprocessing_rescale(img_resize)
 	pred = model.predict(img_for_net[None,:,:,:])[0,:,:,0]
@@ -97,10 +97,10 @@ def calculate_area_oncostream(pred, prop_threshold = 0.9):
 	onco_area = pred.sum()
 	return onco_area/(256*256)
 
-def save_predictions(model, src_dir, img_filename, root_save, calculate_area = True):
+def save_predictions(model, root, raw_dir, save_dir, img_filename, calculate_area = True):
 	"""Function call to save predictions from a model. root_save must contain preds and crops subdirectories."""
-	img = imread(os.path.join(src_dir, img_filename))
-	img = random_crop(img, min_percent = 90)
+	img = imread(os.path.join(root, img_filename))
+	img = random_crop(img, min_percent = 75, max_percent = 95)
 	height, width = img.shape[0], img.shape[1]
 
 	# error handling where some of the images where more than 3 channels (?)
@@ -116,8 +116,14 @@ def save_predictions(model, src_dir, img_filename, root_save, calculate_area = T
 	# save both the prediction and the random crop
 	pred *= 255 # rescale prediction
 	pred = trans.resize(pred, output_shape=(height, width), order = 3) # resize prediction
-	plt.imsave(os.path.join(root_save, "preds", img_filename[0:-4] + "_pred.png"), pred, cmap = "viridis", vmin = 0, vmax = 255)
-	plt.imsave(os.path.join(root_save, "crops", img_filename[0:-4] + "_crop.png"), img, vmin = 0, vmax = 255)
+
+	preds_path = os.path.join(root.replace(raw_dir, save_dir), 'preds')
+	crops_path = os.path.join(root.replace(raw_dir, save_dir), 'crops')
+	os.makedirs(preds_path, exist_ok=True)
+	os.makedirs(crops_path, exist_ok=True)
+
+	plt.imsave(os.path.join(preds_path, img_filename[0:-4] + "_pred.png"), pred, cmap = "viridis", vmin = 0, vmax = 255)
+	plt.imsave(os.path.join(crops_path, img_filename[0:-4] + "_crop.png"), img, vmin = 0, vmax = 255)
 
 	return area
 	
@@ -163,22 +169,28 @@ def plotting_function(image_path, model):
 	plt.suptitle("Intersection over union: " + str(np.round(iou, 3)))
 
 def plotting_function_inference(model, image_path = None, generator = None):
-
+	"""Plot function"""
 	if generator:
 		# index into the input image and the first channel 
 		img, mask = generator.__next__()
 		img, mask = img[0], mask[0]
 	if image_path:
-		img = random_crop(imread(image_path))
+		img = imread(image_path)
+		img = random_crop(img)
+	
+	# error handling where some of the images where more than 3 channels (?)
+	if img.shape[2] != 3:
+		img = img[:,:,0:3]
 	
 	# forward pass through network and index into the prediction
 	pred = feedfoward(model, img)	
 
-	img = img[0] # most reduce dims 
+	# img = img[0] # most reduce dims 
 	fig = plt.figure()
 	ax1 = fig.add_subplot(1,3,1)
-	diff = 1 - img.max()
-	ax1.imshow(img + diff)
+	# diff = 1 - img_copy.max()
+	# ax1.imshow(img_copy + diff)
+	ax1.imshow(img)
 	ax1.set_title("Oncostream image")
 
 	ax2 = fig.add_subplot(1,3,2)
@@ -192,7 +204,8 @@ def plotting_function_inference(model, image_path = None, generator = None):
 	ax3.set_title("Binarized prediction")
 
 	plt.suptitle(image_path.split("/")[-1])
-	plt.savefig("oncoprediction.png", dpi = 500)
+	plt.show()
+	# plt.savefig("oncoprediction.png", dpi = 500)
 
 def export_oncostream_area(model, image_dir):
 	filelist = sorted(os.listdir(image_dir))
@@ -210,23 +223,21 @@ def export_file_area_list(tuple_list):
 if __name__ == "__main__":
 
 	# import model, must include custom_object if used intersection over union as data metric
-	model = load_model("/Users/toddhollon/Desktop/oncostreams_FINAL/models/human_oncostreams_94trainacc.hdf5")
-	#  custom_objects = {'iou':iou})
-	# plotting_function_inference(model, image_path = "/media/4tbhd/home/todd/Desktop/oncostreams/ImagesforDeeplearningAnalysisofGBMandLGG/GBM_IV/Page1_10_DX1.JPG")    
+	# model = load_model("/Users/toddhollon/Desktop/oncostreams_FINAL/models/human_oncostreams_94trainacc.hdf5")
+	model = load_model("/Users/toddhollon/Desktop/oncostreams_FINAL/models/oncostreams_fcnn_97trainaccTODDBESTMODEL.hdf5")
+	# model = load_model("/Users/toddhollon/Desktop/oncostreams_mac/model_trained_val1.hdf5", custom_objects = {'iou':iou})
 
-	# can calculate the area of calculated oncostreams for specific image directory
-	# df = export_oncostream_area(model, "/Users/toddhollon/Desktop/HEimages_for_deeplearning_anlaysis/stream_images")
-	# df.to_excel("andrea_data.xlsx")
-
-	img_dir = "GBM_IV"
-	save_pred_root = os.path.join("/Users/toddhollon/Desktop/oncostreams_FINAL/Preds", img_dir)
+	img_root = '/Users/toddhollon/Desktop/DeepLearningforNPAandNPDColi'
+	raw_dir = 'raw_images'
+	save_dir = 'predictions_mouseCNN_larger'
 	file_area = []
 	# loop to run through and save predictions on images in single directory
-	for root, dirs, files in os.walk(os.path.join('/Users/toddhollon/Desktop/oncostreams_FINAL/ImagesforDeeplearningAnalysisofGBMandLGG', img_dir)):
-		for file in files:
+	for root, dirs, files in os.walk(os.path.join(img_root, raw_dir)):
+	    for file in files:
 			if "tif" in file or "JPG" in file or "png" in file:
 				print(os.path.join(root, file))
-				area = save_predictions(model, src_dir = root, img_filename = file, root_save=save_pred_root, calculate_area=True)
-				file_area.append((file, area))
+				_, leaf = root.split(raw_dir)
+				area = save_predictions(model, root, raw_dir, save_dir, img_filename = file, calculate_area=True)
+				file_area.append((os.path.join(leaf, file), area))
 	df = export_file_area_list(file_area)
-	df.to_excel(os.path.join(save_pred_root, img_dir + ".xlsx"))
+	df.to_excel(os.path.join(img_root, 'prediction.xlsx'))
