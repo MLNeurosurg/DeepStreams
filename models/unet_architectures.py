@@ -7,17 +7,15 @@ Code for Unet architectures that includes:
 Note that the original implementation of this model had the activation function to be linear
 Each has been changed to sigmoid to be in accordance with our preprocessing function of rescaling
 between 0-1
-
 """
-from keras.layers import Conv2D, MaxPooling2D, UpSampling2D, BatchNormalization, Reshape, Permute, Activation, Input, \
+import tensorflow as tf
+from tensorflow.keras.layers import Conv2D, MaxPooling2D, UpSampling2D, BatchNormalization, Reshape, Permute, Activation, Input, \
     add, multiply
-from keras.layers import concatenate, core, Dropout
-from keras.models import Model
-from keras.layers.merge import concatenate
-from keras.optimizers import Adam
-from keras.optimizers import SGD
-from keras.layers.core import Lambda
-import keras.backend as K
+from tensorflow.keras.layers import concatenate, Dropout, Activation, Lambda
+from tensorflow.keras.models import Model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import SGD
+import tensorflow.keras.backend as K
 
 def up_and_concate(down_layer, layer, data_format='channels_last'):
     if data_format == 'channels_first':
@@ -25,7 +23,6 @@ def up_and_concate(down_layer, layer, data_format='channels_last'):
     else:
         in_channel = down_layer.get_shape().as_list()[3]
 
-    # up = Conv2DTranspose(out_channel, [2, 2], strides=[2, 2])(down_layer)
     up = UpSampling2D(size=(2, 2), data_format=data_format)(down_layer)
 
     if data_format == 'channels_first':
@@ -43,9 +40,7 @@ def attention_up_and_concate(down_layer, layer, data_format='channels_last'):
     else:
         in_channel = down_layer.get_shape().as_list()[3]
 
-    # up = Conv2DTranspose(out_channel, [2, 2], strides=[2, 2])(down_layer)
     up = UpSampling2D(size=(2, 2), data_format=data_format)(down_layer)
-
     layer = attention_block_2d(x=layer, g=up, inter_channel=in_channel // 4, data_format=data_format)
 
     if data_format == 'channels_first':
@@ -57,30 +52,13 @@ def attention_up_and_concate(down_layer, layer, data_format='channels_last'):
     return concate
 
 def attention_block_2d(x, g, inter_channel, data_format='channels_last'):
-    # theta_x(?,g_height,g_width,inter_channel)
 
     theta_x = Conv2D(inter_channel, [1, 1], strides=[1, 1], data_format=data_format)(x)
-
-    # phi_g(?,g_height,g_width,inter_channel)
-
     phi_g = Conv2D(inter_channel, [1, 1], strides=[1, 1], data_format=data_format)(g)
-
-    # f(?,g_height,g_width,inter_channel)
-
     f = Activation('relu')(add([theta_x, phi_g]))
-
-    # psi_f(?,g_height,g_width,1)
-
     psi_f = Conv2D(1, [1, 1], strides=[1, 1], data_format=data_format)(f)
-
     rate = Activation('sigmoid')(psi_f)
-
-    # rate(?,x_height,x_width)
-
-    # att_x(?,x_height,x_width,x_channel)
-
     att_x = multiply([x, rate])
-
     return att_x
 
 def res_block(input_layer, out_n_filters, batch_normalization=False, kernel_size=[3, 3], stride=[1, 1],

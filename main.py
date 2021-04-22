@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 
-"""
-Main script to train and analyze semantic segmentation of oncostreams in H&E images.
-"""
+"""Main script to train and analyze semantic segmentation of oncostreams in H&E images."""
+import os
+import sys
 
 from models.unet_architectures import unet, att_unet, r2_unet, att_r2_unet
 from utils.data import trainGenerator
 import numpy as np
-import os
 from pandas import DataFrame
 from pylab import rcParams
 
-# from skimage.io import imread
 from imageio import imread
 import skimage.transform as trans
 import matplotlib.pyplot as plt
@@ -19,10 +17,10 @@ from sklearn.metrics import accuracy_score
 from pandas import DataFrame
 
 # import keras and tf
-from keras.models import load_model
-from keras.optimizers import Adam
-from keras.callbacks import LearningRateScheduler
 import tensorflow as tf
+from tensorflow.keras.models import load_model
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import LearningRateScheduler
 from keras import backend as K
 
 def preprocessing_rescale(img):
@@ -85,6 +83,7 @@ def export_oncostream_area(image_dir, model):
         arealist.append(calculate_area_oncostream(os.path.join(image_dir, file), model))
     return DataFrame({"files":filelist, "areas":arealist})
 
+
 def step_decay(epoch):
     initial_lr = 0.0001
     drop = 0.5
@@ -92,10 +91,9 @@ def step_decay(epoch):
     lrate = initial_lr * np.power(drop, np.floor((epoch + 1)/epochs_drop))
     return lrate
 
+
 def train_histories(epochs, validation_dir):
-    """
-    Returns a dataframe of the training history
-    """
+    """Returns a dataframe of the training history."""
     model = load_model("/home/orringer-lab/Desktop/oncostreams/models/oncostreams_fcnn_97trainacc.hdf5")
     validation_generator = trainGenerator(batch_size = 4,
                         train_path = validation_dir,
@@ -123,6 +121,8 @@ if __name__ == "__main__":
     IMAGE_SIZE = (256, 256, 3)
     # specify the root directory with "images" and "masks" subdirectories
     training_image_dir = "/media/4tbhd/home/todd/Desktop/oncostreams/patches/training_patches"
+    print(training_image_dir)
+    sys.exit()
     validation_image_dir = ""
 
     # instantiate the data generator augmentation methods
@@ -143,17 +143,16 @@ if __name__ == "__main__":
                             aug_dict= data_gen_args,
                             save_to_dir = None)
 
-#    val_gen = trainGenerator(batch_size=5,
-#                            train_path= validation_image_dir,
-#                            image_folder= 'images',
-#                            mask_folder= 'masks',
-#                            aug_dict= data_gen_args,
-#                            save_to_dir = None)
+   val_gen = trainGenerator(batch_size=5,
+                           train_path= validation_image_dir,
+                           image_folder= 'images',
+                           mask_folder= 'masks',
+                           aug_dict= data_gen_args,
+                           save_to_dir = None)
 
     model = load_model('/media/4tbhd/home/todd/Desktop/oncostreams/models/oncostreams_cells_98trainacc.hdf5')
     # model = att_r2_unet()
     # model = unet(input_size=IMAGE_SIZE)
-
 
     # compile the model
     adam = Adam(lr = 0.00005)
@@ -162,33 +161,14 @@ if __name__ == "__main__":
     # fit the model
     model.fit_generator(train_gen, steps_per_epoch=1000, epochs=20),
 
+    # for val_dir in validation_dir_list:
+    #     train_df, model = train_histories(epochs = 25, validation_dir = val_dir)
+    #     train_df.to_excel(val_dir.split("/")[-1] + ".xlsx")
+    #     model.save('model_trained_' + val_dir + ".hdf5")
+
+    # model.save("oncostreams_cells_98trainacc.hdf5")
+    
     # df = pd.DataFrame(model.history.history)
     # plotting_function_infeirence("/media/labcomputer/e33f6fe0-5ede-4be4-b1f2-5168b7903c7a/home/todd/Desktop/oncostreams/patches/images/1_18.png", model)
     # plotting_function("/home/todd/Desktop/oncostreams/training_tiles/images/1_35.tif", model)
     # plotting_function_inference("/home/todd/Desktop/oncostreams/old_dirs/testing_tiles/images/Image_25250.tif", model)
-
-    # model.save("oncostreams_cells_98trainacc.hdf5")
-
-    # image_dir = "/Volumes/UNTITLED/TODD-2019-05-19/"
-    # filelist = os.listdir(image_dir)
-    # for file in filelist:
-    #     plotting_function_inference(os.path.join(image_dir, file), model)
-
-#     training_image_dir = '/home/orringer-lab/Desktop/oncostreams/random_crops'
-#     validation_image_dir = "/home/orringer-lab/Desktop/oncostreams/vallsidation_set"
-#     validation_dir_list = sorted(os.listdir(validation_image_dir))
-#     validation_dir_list = [os.path.join(validation_image_dir, x) for x in validation_dir_list]
-#     cell_dir = "/home/orringer-lab/Desktop/unet/tiled_images/train"
-#     learn_rate = 0.00001
-
-#     train_generator = trainGenerator(batch_size = 5,
-#                             train_path = training_image_dir,
-#                             image_folder = 'images', 
-#                             mask_folder = 'masks', 
-#                             aug_dict = data_gen_args, 
-#                             save_to_dir = None)
-
-#     for val_dir in validation_dir_list:
-#         train_df, model = train_histories(epochs = 25, validation_dir = val_dir)
-#         train_df.to_excel(val_dir.split("/")[-1] + ".xlsx")
-#         model.save('model_trained_' + val_dir + ".hdf5")
