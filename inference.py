@@ -1,10 +1,12 @@
+import os
+import pandas as pd
 import torch 
 from imageio import imread
 from skimage.transform import resize
 import numpy as np
 import matplotlib.pyplot as plt
 from torchvision import transforms
-from utils.image_utils import random_crop
+from utils import random_crop
 
 IMAGE_SIZE = 256
 
@@ -27,7 +29,7 @@ def view_prediction(image, pred):
 def feedfoward(model, raw_image, transform, device = 'cuda'):
 	"""Function that will perform forward pass on raw unprocessed image. 
 	Well then return the probability heatmap from network."""
-
+	
 	if raw_image.shape[2] != 3:
 		raw_image = raw_image[:,:,0:3]
 
@@ -50,19 +52,20 @@ def calculate_area_oncostream(pred, prop_threshold = 0.9):
 	pred[pred > prop_threshold] = 1
 	pred[pred <= prop_threshold] = 0
 	onco_area = pred.sum()
-	return onco_area/(256*256)
+	print(onco_area/(pred.shape[-1] ** 2))
+	return onco_area/(pred.shape[-1] ** 2)
 
 
-def save_predictions(model, tranform, root, raw_dir, save_dir, img_filename, calculate_area = True):
+def save_predictions(model, transform, root, raw_dir, save_dir, img_filename, calculate_area = True, device = 'cpu'):
 	"""Function call to save predictions from a model. root_save must contain preds and crops subdirectories."""
 	img = imread(os.path.join(root, img_filename))
 	
 	# perform feedforward pass on image
-	image_crop, pred = feedfoward(model, img, transform)
-
+	img, pred = feedfoward(model, img, transform, device)
 	if calculate_area:
 		area = calculate_area_oncostream(pred)
 	
+	pred *= 255
 	# save both the prediction and the random crop
 	preds_path = os.path.join(root.replace(raw_dir, save_dir), 'preds')
 	crops_path = os.path.join(root.replace(raw_dir, save_dir), 'crops')
@@ -78,30 +81,33 @@ def save_predictions(model, tranform, root, raw_dir, save_dir, img_filename, cal
 def export_file_area_list(tuple_list):
 	files = [x[0] for x in tuple_list]
 	areas = [x[1] for x in tuple_list]
-	return DataFrame({"files":files, "areas":areas})
+	return pd.DataFrame({"files":files, "areas":areas})
 
-# if __name__ == "__main__":
+if __name__ == "__main__":
 
-model = torch.load('unet_oncostreams_acc86.pt')
-print(model)
+	# load model
+	model = torch.load('models/unet_oncostreams_acc86.pt', map_location = torch.device('cpu'))
+	model.eval()
+	print(model)
 
-raw_image = imread('/home/labcomputer/Desktop/oncostreams/oncostream_all_raw/NewMASK2021andInputs/images/Image_6.tif')
-image, pred = feedfoward(model, raw_image, stream_transforms)
-print(image.shape)
-print(pred.shape)
-view_prediction(image, pred)
-
-# img_root = '/Users/toddhollon/Desktop/DeepLearningforNPAandNPDColi'
-# raw_dir = 'raw_images'
-# save_dir = 'predictions_mouseCNN_larger'
-# file_area = []
-# # loop to run through and save predictions on images in single directory
-# for root, dirs, files in os.walk(os.path.join(img_root, raw_dir)):
-#     for file in files:
-#         if "tif" in file or "JPG" in file or "png" in file:
-#             print(os.path.join(root, file))
-#             _, leaf = root.split(raw_dir)
-#             area = save_predictions(model, root, raw_dir, save_dir, img_filename = file, calculate_area=True)
-#             file_area.append((os.path.join(leaf, file), area))
-# df = export_file_area_list(file_area)
-# df.to_excel(os.path.join(img_root, 'prediction.xlsx')
+	# specify directories 
+	img_root = '/Users/toddhollon/Desktop/DeepLearningforNPAandNPDColi'
+	raw_dir = 'raw_images'
+	save_dir = 'new_pytorch_model'
+	file_area = []
+	# loop to run through and save predictions on images in single directory
+	for root, dirs, files in os.walk(os.path.join(img_root, raw_dir)):
+		for file in files:
+			if ("tif" in file) or ("JPG" in file) or ("png" in file):
+				print(os.path.join(root, file))
+				_, leaf = root.split(raw_dir)
+				area = save_predictions(model, 
+										stream_transforms, 
+										root, 
+										raw_dir, 
+										save_dir, 
+										img_filename = file, 
+										calculate_area=True)
+				file_area.append((os.path.join(leaf, file), area))
+	df = export_file_area_list(file_area)
+	df.to_excel(os.path.join(img_root, 'prediction.xlsx'))

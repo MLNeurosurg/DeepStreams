@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from torchvision import transforms
 
-from dataset.stream_dataset import Stream_Dataset
+from dataset import Stream_Dataset
 from unet import UNet
 
 data_root = Path('/home/labcomputer/Desktop/oncostreams/data')
