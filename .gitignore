@@ -1,4 +1,7 @@
 models/
+results/
+data/
 *pt
 *.vscode
 *pycache*
+*zip
