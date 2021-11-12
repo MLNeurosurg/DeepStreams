@@ -3,5 +3,6 @@ results/
 data/
 *pt
 *.vscode
-*pycache*
+*pyc
+__pycache__/
 *zip

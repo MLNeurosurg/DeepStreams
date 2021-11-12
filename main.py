@@ -52,33 +52,31 @@ criterion = nn.BCEWithLogitsLoss()
 
 n_epochs = 20
 for epoch in range(n_epochs):
-    print("=============={}===============".format(epoch + 1))
-    net.train()
-    batch_idx = 1
-    epoch_loss = 0
-    correct = 0
-    total = 0
-    for images, masks in train_loader:
-        images = images.to(device=device).float()
-        masks = masks.to(device=device).float()
+	print("=============={}===============".format(epoch+1))
+	net.train()
+	batch_idx = 1
+	epoch_loss = 0
+	correct = 0
+	total = 0
+	for images, masks in train_loader:
+		images = images.to(device=device).float()
+		masks  = masks.to(device=device).float()
+		
+		masks_pred = net(images)
+		assert masks_pred.shape == masks.shape
+		loss = criterion(masks_pred, masks)
+		epoch_loss += loss.item()
 
-        masks_pred = net(images)
-        assert masks_pred.shape == masks.shape
-        loss = criterion(masks_pred, masks)
-        epoch_loss += loss.item()
+		# pred = pred.cpu()
+		preds = torch.ge(torch.sigmoid(masks_pred), 0.5).float()
+		correct += (preds == masks).sum().cpu().numpy()
+		total += (masks.size(0) * masks.size(1) * masks.size(2) * masks.size(3))
+		print("Iteration: " + str(batch_idx) + " >>>> epoch accuracy: " + str(correct/total), 
+					end = '\r', flush = True)
 
-        # pred = pred.cpu()
-        preds = torch.ge(torch.sigmoid(masks_pred), 0.5).float()
-        correct += (preds == masks).sum().cpu().numpy()
-        total += (masks.size(0) * masks.size(1) * masks.size(2) *
-                  masks.size(3))
-        print("Iteration: " + str(batch_idx) + " >>>> epoch accuracy: " +
-              str(correct / total),
-              end='\r',
-              flush=True)
+		batch_idx += 1
 
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        batch_idx += 1
+		optimizer.zero_grad()
+		loss.backward()
+		# nn.utils.clip_grad_value_(net.parameters(), 0.1)
+		optimizer.step()
