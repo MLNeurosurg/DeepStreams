@@ -18,7 +18,6 @@ data_root = Path('/home/labcomputer/Desktop/oncostreams/data')
 images_path = data_root / 'images'
 masks_path = data_root / 'masks'
 
-
 def view_image_mask(image, mask):
     image = image.numpy()
     mask = mask.numpy()
