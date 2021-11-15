@@ -1,9 +1,30 @@
 # DeepStreams
 Code repository for the following manuscript: *Spatiotemporal analysis of glioma heterogeneity reveals Col1A1 as an actionable 1 target to disrupt tumor mesenchymal differentiation, invasion and malignancy.*
-
 [[paper]](https://www.biorxiv.org/content/10.1101/2020.12.01.404970v2)
 
-## Citing ##
+Repo to train and validate U-Net model for semantic segmentation of oncostreams in H&E images. Installation and demo takes less than a minute. 
+
+# Installation
+
+1. Install miniconda: follow instructions
+    [here](https://docs.conda.io/en/latest/miniconda.html)
+2. Create conda environment:  
+    ```console
+    conda create -n deepstreams python=3.8
+    ```
+3. Activate conda environment:  
+    ```console
+    conda activate deepstreams
+    ```
+4. Install package and dependencies  
+    ```console
+    <cd /path/to/repo/dir>
+    pip install -e .
+    ```
+4. Train model
+    ```console
+    python main.py
+    ```
 
 ```bibtex
 @ARTICLE{Comba2021-dr,
